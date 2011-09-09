@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+
+require 'scalarium'
+require 'scalarium/cli'
+
+Scalarium::CLI.start
