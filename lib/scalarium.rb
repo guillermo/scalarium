@@ -1,20 +1,33 @@
-require "scalarium/version"
 require 'rest-client'
 require 'json'
 require 'dispatch_queue'
 require 'ostruct'
 
+require "scalarium/version"
+require "scalarium/api"
+require "scalarium/resource"
+require "scalarium/cloud"
+
 class Scalarium
-  class Instance < OpenStruct ; end
-  class Rol     < OpenStruct ; end
-  class Cloud    < OpenStruct ; end
+  include Scalarium::Api
+
+  class Instance < Resource ; end
+  class Rol      < Resource ; end
+  class App      < Resource ; end
 
   attr_reader :clouds
+
+  #
+  # cloud could be:
+  #   nil    => Fetch infor from all clouds
+  #   string => Regular expresion that will match cloud names
+  #   false  => Don't fetch neighter roles neigher instances
+  #
   def initialize(token, cloud = nil)
     @token = token
     @clouds = []
 
-    @clouds = get('clouds').map{|c| Cloud.new(c) }
+    @clouds = get('clouds').map{|c| Cloud.new(@token,c) }
 
     return if cloud == false
 
@@ -27,23 +40,23 @@ class Scalarium
     DQ[*(@clouds.map {  |cloud| lambda { process_cloud(cloud) } })]
   end
 
-  private
+  def apps
+    apps = get('applications').map{ |app|  App.new(@token,app) }
+    require 'ruby-debug'
+    debugger
+    debugger
 
-  def get(resource)
-    $stderr.puts "Getting #{resource}" if $DEBUG
-    url = "https://manage.scalarium.com/api/#{resource}"
-    headers = {
-      'X-Scalarium-Token' => @token,
-      'Accept' => 'application/vnd.scalarium-v1+json'
-    }
-    response = RestClient.get(url, headers)
-    JSON.parse(response)
+    puts apps.inspect
+    apps
   end
+
+  protected
+
 
   def get_roles_proc(cloud_id)
     lambda do
       get("clouds/#{cloud_id}/roles").map { |hash|
-        Rol.new(hash)
+        Rol.new(@token,hash)
       }
     end
   end
@@ -51,7 +64,7 @@ class Scalarium
   def get_instances_proc(cloud_id)
     lambda do
       get("clouds/#{cloud_id}/instances").map { |hash|
-        Instance.new(hash)
+        Instance.new(@token,hash)
       }
     end
   end
