@@ -7,13 +7,13 @@ require "scalarium/version"
 require "scalarium/api"
 require "scalarium/resource"
 require "scalarium/cloud"
+require "scalarium/app"
 
 class Scalarium
   include Scalarium::Api
 
   class Instance < Resource ; end
   class Rol      < Resource ; end
-  class App      < Resource ; end
 
   attr_reader :clouds
 
@@ -41,13 +41,7 @@ class Scalarium
   end
 
   def apps
-    apps = get('applications').map{ |app|  App.new(@token,app) }
-    require 'ruby-debug'
-    debugger
-    debugger
-
-    puts apps.inspect
-    apps
+    get('applications').map{ |app|  App.new(@token,app) }
   end
 
   protected

@@ -58,8 +58,78 @@ class Scalarium
             deploy_info = cloud.check_deploy(deploy_info["id"])
           end
           puts "Deploy was #{deploy_info["successful"]}"
+          exit (deploy_info["successful"] ? 0 : -1)
         end
       end
+    end
+
+    desc 'run_recipe RECIPE', 'Execute recipes in given'
+    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
+    method_option :instance, :aliases => "-i", :type => :array, :desc => "List of instances: -i instace1 instace2"
+    def run_recipe(recipes_names)
+      capture_exceptions do
+        scalarium = ::Scalarium.new(get_token, options[:cloud])
+        instances = nil
+
+        if scalarium.clouds.size > 1
+          $stderr.puts "This operation should be done in only one cloud"
+          exit -1
+        elsif scalarium.clouds.size < 1
+          $stderr.puts "You should select at least one cloud"
+          exit -2
+        end
+        cloud = scalarium.clouds.first
+        instances = options[:instance] ? get_instances_ids(cloud, options[:instance]) : nil
+
+        deploy_info = cloud.run_recipe!(recipes_names, instances)
+
+        puts "Waiting the recipe to finish"
+        puts "Check https://manage.scalarium.com/clouds/#{cloud.id}/deployments/#{deploy_info["id"]} if you want"
+        while deploy_info["successful"] == nil
+          sleep 1
+          deploy_info = cloud.check_deploy(deploy_info["id"])
+        end
+        puts "Deploy was #{deploy_info["successful"]}"
+        exit (deploy_info["successful"] ? 0 : -1)
+      end
+    end
+
+    desc 'deploy APP', "Deploy application named APP"
+    def deploy(name)
+      capture_exceptions do
+        scalarium = ::Scalarium.new(get_token, false)
+
+        all_apps = scalarium.apps
+        posible_apps = all_apps.select{|app|
+          [app.name, app.slug_name].any?{|a| a =~ Regexp.new(name, ::Regexp::IGNORECASE)}
+        }
+        if posible_apps.size > 1
+          $stderr.puts "Found more than one application matching #{name}"
+          posible_apps.each do |app|
+            puts " #{app.name} (#{app.slug_name}) "
+          end
+        elsif posible_apps.size == 0
+          $stderr.puts "App with name #{name} not found"
+          available_apps = all_apps.map {|app|
+            "#{app.name} (#{app.slug_name})"
+          }
+          $stderr.puts "Available apps: #{available_apps.join(" ")}"
+        else
+          app = posible_apps.first
+
+          deploy_info = app.deploy!
+
+          puts "Waiting the deploy finish"
+          puts "Check https://manage.scalarium.com/applications/#{app.id}/deployments/#{deploy_info["id"]} if you want"
+          while deploy_info["successful"] == nil
+            sleep 1
+            deploy_info = app.deploy_info(deploy_info["id"])
+          end
+          puts "Deploy was #{deploy_info["successful"]}"
+          exit (deploy_info["successful"] ? 0 : -1)
+        end
+      end
+
     end
 
     desc 'apps', "List the apps"
@@ -105,6 +175,21 @@ class Scalarium
 
     protected
 
+    def get_instances_ids(cloud, instances)
+      posible_instances = cloud.instances.select{|instance|
+        instances.include?(instance.nickname.downcase)
+      }
+      if posible_instances.size != instances.size
+        if posible_instances.size == 0
+          $stderr.puts "Not to be able to found any instance with name/names #{instances}"
+        else
+          $stderr.puts "Only be able to found #{posible_instances.map{|i| i.nickname}.join(" ")} instances"
+        end
+        exit -3
+      end
+      posible_instances.map{|i| i.id }
+    end
+
     def format_ssh_config_host(instance)
       return "" if instance.ip.to_s.strip.empty?
       host = "\nHost #{instance.nickname}\n" << "    Hostname #{instance.ip}\n"
@@ -121,6 +206,9 @@ class Scalarium
     rescue ::OpenSSL::SSL::SSLError, ::RestClient::ServerBrokeConnection
       say("There were problems with ssl. Pleas retry")
       exit -2
+    rescue ::Errno::ETIMEDOUT
+      say("There were problems with connection (timeout)")
+      exit -3
     end
 
     def get_token
