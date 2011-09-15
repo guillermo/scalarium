@@ -47,7 +47,6 @@ class Scalarium
 
         scalarium.clouds.each do |cloud|
           puts "Updating cookbooks for #{cloud.name}"
-          next unless (ask "Continue? (say yes)").strip == "yes"
 
           deploy_info = cloud.update_cookbooks!
 
