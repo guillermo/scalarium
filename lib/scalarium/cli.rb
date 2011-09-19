@@ -1,4 +1,5 @@
 require 'thor'
+require 'net/ssh'
 
 trap("INT"){ exit -1 }
 
@@ -36,6 +37,31 @@ class Scalarium
           f.write config
         }
         say("Configuration file updated")
+      end
+    end
+
+    desc 'execute COMMAND', "Execute a command in a cloud"
+    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
+    method_option :instance, :aliases => "-i", :type => :array, :desc => "List of instances: -i instace1 instace2"
+    def execute(command)
+
+      capture_exceptions do
+        scalarium = ::Scalarium.new(get_token, options[:cloud])
+        instances = nil
+
+        if scalarium.clouds.size > 1
+          $stderr.puts "This operation should be done in only one cloud"
+          exit -1
+        elsif scalarium.clouds.size < 1
+          $stderr.puts "You should select at least one cloud"
+          exit -2
+        end
+        cloud = scalarium.clouds.first
+        hosts = get_instances(cloud, options[:instances]).map{|i| i.nickname}
+
+        hosts.threaded_each do |host|
+          run_remote_command(host, command)
+        end
       end
     end
 
@@ -174,7 +200,38 @@ class Scalarium
 
     protected
 
+    def run_remote_command(host, command)
+      puts "Oppening connection to host #{host}" if $DEBUG
+      Net::SSH.start(host, ENV["USER"]) do |ssh|
+        puts "Executing #{command}" if $DEBUG
+        ssh.exec!(command) do |channel, stream, data|
+          Thread.exclusive do
+            case stream
+            when :stdout
+              $stdout.puts ("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
+            when :stderr
+              $stderr.puts ("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
+            end
+          end
+        end
+      end
+    rescue Net::SSH::AuthenticationFailed
+      Thread.exclusive do
+        $stderr.puts "#{Color::RED}Could not execute a command in #{host} because auth problems"
+        $stderr.puts "Check that you can access #{host} through 'ssh #{host}' as your username (ENV['USER'])#{Color::CLEAR}"
+      end
+    rescue SocketError
+      Thread.exclusive do
+        $stderr.puts "#{Color::RED}Cold not connect to #{host} due connection problems#{Color::CLEAR}"
+      end
+    end
+
     def get_instances_ids(cloud, instances)
+      get_instances(cloud, instances).map{|i| i.id }
+    end
+
+    def get_instances(cloud, instances)
+      return cloud.instances if instances.nil? || instances.empty?
       posible_instances = cloud.instances.select{|instance|
         instances.include?(instance.nickname.downcase)
       }
@@ -186,7 +243,7 @@ class Scalarium
         end
         exit -3
       end
-      posible_instances.map{|i| i.id }
+      posible_instances
     end
 
     def format_ssh_config_host(instance)

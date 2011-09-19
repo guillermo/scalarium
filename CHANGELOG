@@ -1,3 +1,6 @@
+Version 0.3.0
+   * execute - Added execute command
+
 Version 0.2.0
    * run_recipe       - Allow to run recipes in some instances
    * udpate_cookbooks - Allow to update cookbooks in machines
