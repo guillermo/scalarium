@@ -7,61 +7,47 @@ require "scalarium/version"
 require "scalarium/api"
 require "scalarium/resource"
 require "scalarium/cloud"
+require "scalarium/instance"
+require "scalarium/rol"
 require "scalarium/app"
 
 class Scalarium
   include Scalarium::Api
 
-  class Instance < Resource ; end
-  class Rol      < Resource ; end
+  class CloudNotFound < Exception; end
 
-  attr_reader :clouds
-
-  #
-  # cloud could be:
-  #   nil    => Fetch infor from all clouds
-  #   string => Regular expresion that will match cloud names
-  #   false  => Don't fetch neighter roles neigher instances
-  #
-  def initialize(token, cloud = nil)
+  def initialize(token)
     @token = token
-    @clouds = []
+  end
 
+  def clouds
+    return @clouds if @clouds
     @clouds = get('clouds').map{|c| Cloud.new(@token,c) }
+  end
 
-    return if cloud == false
+  def find_cloud(name)
+    clouds.find{|c| c.name.downcase == name.downcase}
+  end
 
-    if cloud != nil
-      filtered_clouds = @clouds.select do |c|
-        (c.name =~ /#{cloud}/i) || c.name.downcase.include?(cloud.downcase)
-      end
-      @clouds = filtered_clouds || []
+  def find_clouds(names)
+    return clouds if names == "all"
+    clouds = []
+    names.split(",").each do |cloud_name|
+      clouds << find_cloud(cloud_name) or raise CloudNotFound.new(cloud_names)
     end
-    DQ[*(@clouds.map {  |cloud| lambda { process_cloud(cloud) } })]
+    clouds
   end
 
   def apps
-    get('applications').map{ |app|  App.new(@token,app) }
+    return @apps if @apps
+    @apps = get('applications').map{ |app|  App.new(@token,app) }
+  end
+
+  def find_app(name)
+    apps.find{|c| c.name.downcase == name.downcase}
   end
 
   protected
-
-
-  def get_roles_proc(cloud_id)
-    lambda do
-      get("clouds/#{cloud_id}/roles").map { |hash|
-        Rol.new(@token,hash)
-      }
-    end
-  end
-
-  def get_instances_proc(cloud_id)
-    lambda do
-      get("clouds/#{cloud_id}/instances").map { |hash|
-        Instance.new(@token,hash)
-      }
-    end
-  end
 
   def process_cloud(cloud)
     roles, instances = DQ[ get_roles_proc(cloud.id) , get_instances_proc(cloud.id)  ]

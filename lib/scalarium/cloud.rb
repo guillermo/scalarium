@@ -15,5 +15,36 @@ class Scalarium
 
       post("clouds/#{id}/deploy", opt)
     end
+
+    def instances
+      return @instances if @instances
+      @instances = get("clouds/#{id}/instances").map{|hash|
+        Instance.new(@token, self, hash)
+      }
+    end
+
+    def find_instance(name_or_id)
+      instances.find{|i| [i.name.downcase, i.nickname.downcase, i.id].include?(name_or_id.downcase)}
+    end
+
+		def find_instances(rol_or_instance)
+			return instances  if rol_or_instance == "all"
+			rol = find_rol(rol_or_instance)
+			return rol.instances if rol
+			instance = find_instance(rol_or_instance)
+			return [instance] if instance
+			nil
+		end
+
+    def roles
+      return @roles if @roles
+      @roles = get("clouds/#{id}/roles").map{|hash|
+        Rol.new(@token, self, hash)
+      }
+    end
+
+    def find_rol(name_or_id)
+      roles.find{|r| [r.name.downcase, r.shortname.downcase, r.id].include?(name_or_id.downcase)}
+    end
   end
 end

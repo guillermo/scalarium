@@ -6,16 +6,21 @@ trap("INT"){ exit -1 }
 class Scalarium
   class CLI < Thor
     include Thor::Actions
-    desc 'update_sshconfig', "Create ssh hosts for your infraestructure in ~/.ssh/config"
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
+
+    class CloudNotFound         < Exception; end
+    class RolOrInstanceNotFound < Exception; end
+    class AppNotFound           < Exception; end
+
+    desc 'sshconfig CLOUD', "Create ssh hosts for your infraestructure in ~/.ssh/config"
     method_option :certificate, :aliases => "-i", :desc => "specify alternate certificate for login"
-    def update_sshconfig
-      capture_exceptions do
-        scalarium = ::Scalarium.new( get_token, options[:cloud] )
+    def sshconfig(cloud_names)
+      with_scalarium(cloud_names) do |scalarium,clouds|
+
 
         config_file = File.expand_path("~/.ssh/config")
-        header = "# Added by scalarium"
-        tail = "# Do not modify"
+        header      = "# Added by scalarium"
+        tail        = "# Do not modify"
+
         if File.exists?(config_file)
           config = File.read(config_file)
           config.gsub!(/#{header}.*#{tail}/mi,'')
@@ -24,12 +29,16 @@ class Scalarium
         end
 
         config  << header << "\n"
-        scalarium.clouds.each do |cloud|
-          say "Adding hosts from #{cloud.name}"
+
+        clouds.threaded_each do |cloud|
           cloud.instances.each do |instance|
-            config << format_ssh_config_host(instance)
+            Thread.exclusive do
+              say_status(cloud.name, instance.nickname)
+              config << format_ssh_config_host(instance)
+            end
           end
         end
+
         config << "\n" << tail << "\n"
 
         File.open(config_file,'w'){|f|
@@ -40,38 +49,49 @@ class Scalarium
       end
     end
 
-    desc 'execute COMMAND', "Execute a command in a cloud"
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
-    method_option :instance, :aliases => "-i", :type => :array, :desc => "List of instances: -i instace1 instace2"
-    def execute(command)
+    desc 'execute CLOUDNAME ROL_OR_INSTANCE COMMAND', "Execute a command in a cloud.\nUse 'all' as instance to execute in all instances."
+    def execute(cloud_name, rol_or_instance, command)
+      with_scalarium(cloud_name) do |scalarium, clouds|
 
-      capture_exceptions do
-        scalarium = ::Scalarium.new(get_token, options[:cloud])
-        instances = nil
+        clouds.each do |cloud|
+          instances = cloud.find_instances(rol_or_instance) or raise RolOrInstanceNotFound.new(rol_or_instance)
 
-        if scalarium.clouds.size > 1
-          $stderr.puts "This operation should be done in only one cloud"
-          exit -1
-        elsif scalarium.clouds.size < 1
-          $stderr.puts "You should select at least one cloud"
-          exit -2
-        end
-        cloud = scalarium.clouds.first
-        hosts = get_instances(cloud, options[:instances]).map{|i| i.nickname}
-
-        hosts.threaded_each do |host|
-          run_remote_command(host, command)
+          instances.threaded_each do |instance|
+            run_remote_command(instance, command)
+          end
         end
       end
     end
 
-    desc 'update_cookbooks', "Make instances to pull changes from recipies repository"
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
-    def update_cookbooks
-      capture_exceptions do
-        scalarium = ::Scalarium.new(get_token, options[:cloud])
+    desc 'run_remote CLOUDNAME ROL_OR_INSTANCE COMMAND', "Run a remote command and shows its output through tmux.\n Use all to run the command in all the instances."
+    def run_remote(cloud_name, rol_or_instance, command)
+      with_scalarium(cloud_name) do |scalarium, clouds|
 
-        scalarium.clouds.each do |cloud|
+        instances = []
+        clouds.each do |cloud|
+          instances = cloud.find_instances(rol_or_instance) or raise RolOrInstanceNotFound.new(rol_or_instance)
+        end
+        instances.flatten!
+
+        total_instances = instances.size
+        command = "#{command} ; read"
+        session_name = "scalarium_gem#{Time.now.to_i}#{Time.now.usec}"
+        puts "Launching in #{instances.map{|i| i.nickname}}"
+        system(%{tmux new-session -d -n #{session_name} -s #{session_name} "ssh -t #{instances.shift.nickname} \\"#{command}\\""})
+        while(instance = instances.shift) do
+          system(%{tmux split-window -h -p #{100/total_instances*(instances.size+1)} -t #{session_name} "ssh -t #{instance.nickname} \\"#{command}\\""})
+        end
+        system("tmux select-window -t #{session_name}")
+        exec("tmux -2 attach-session -t #{session_name}")
+      end
+    end
+
+    desc 'update_cookbooks CLOUDNAME', "Make instances to pull changes from recipies repository"
+    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
+    def update_cookbooks(cloud_name)
+      with_scalarium(cloud_name) do |scalarium,clouds|
+
+        clouds.each do |cloud|
           puts "Updating cookbooks for #{cloud.name}"
 
           deploy_info = cloud.update_cookbooks!
@@ -88,119 +108,87 @@ class Scalarium
       end
     end
 
-    desc 'run_recipe RECIPE', 'Execute recipes in given'
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
-    method_option :instance, :aliases => "-i", :type => :array, :desc => "List of instances: -i instace1 instace2"
-    def run_recipe(recipes_names)
-      capture_exceptions do
-        scalarium = ::Scalarium.new(get_token, options[:cloud])
-        instances = nil
+    desc 'configure ROL_OR_INSTANCE', 'Trigger configure event'
+    def configure(rol_or_instance)
+      # /clouds/07/instances/e5/chef?chef_action=setup
+      # /clouds/07/instances/e5/chef?chef_action=configure
+    end
 
-        if scalarium.clouds.size > 1
-          $stderr.puts "This operation should be done in only one cloud"
-          exit -1
-        elsif scalarium.clouds.size < 1
-          $stderr.puts "You should select at least one cloud"
-          exit -2
+    desc 'run_recipe CLOUDNAME ROL_OR_INSTANCE RECIPE', 'Execute recipes in given'
+    def run_recipe(cloudname, rol_or_instances, recipes_names)
+      with_scalarium(cloudname) do |scalarium, clouds|
+
+        clouds.each do |cloud|
+
+          instances = cloud.find_instances(rol_or_instances) or raise RolOrInstanceNotFound.new(rol_or_instances)
+          instance_ids = instances.map{|i| i.id}
+
+          deploy_info = cloud.run_recipe!(recipes_names, instance_ids)
+
+          puts "Waiting the recipe to finish"
+          puts "Check https://manage.scalarium.com/clouds/#{cloud.id}/deployments/#{deploy_info["id"]} if you want"
+          while deploy_info["successful"] == nil
+            sleep 1
+            deploy_info = cloud.check_deploy(deploy_info["id"])
+          end
+          puts "Deploy was #{deploy_info["successful"]}"
+          exit (deploy_info["successful"] ? 0 : -1)
         end
-        cloud = scalarium.clouds.first
-        instances = options[:instance] ? get_instances_ids(cloud, options[:instance]) : nil
+      end
+    end
 
-        deploy_info = cloud.run_recipe!(recipes_names, instances)
+    desc 'deploy APP', "Deploy application named APP"
+    def deploy(name)
+      with_scalarium do |scalarium|
+        app = scalarium.find_app(name) or raise AppNotFound.new(name)
 
-        puts "Waiting the recipe to finish"
-        puts "Check https://manage.scalarium.com/clouds/#{cloud.id}/deployments/#{deploy_info["id"]} if you want"
+        deploy_info = app.deploy!
+
+        puts "Waiting the deploy finish"
+        puts "Check https://manage.scalarium.com/applications/#{app.id}/deployments/#{deploy_info["id"]} if you want"
         while deploy_info["successful"] == nil
           sleep 1
-          deploy_info = cloud.check_deploy(deploy_info["id"])
+          deploy_info = app.deploy_info(deploy_info["id"])
         end
         puts "Deploy was #{deploy_info["successful"]}"
         exit (deploy_info["successful"] ? 0 : -1)
       end
     end
 
-    desc 'deploy APP', "Deploy application named APP"
-    def deploy(name)
-      capture_exceptions do
-        scalarium = ::Scalarium.new(get_token, false)
-
-        all_apps = scalarium.apps
-        posible_apps = all_apps.select{|app|
-          [app.name, app.slug_name].any?{|a| a =~ Regexp.new(name, ::Regexp::IGNORECASE)}
-        }
-        if posible_apps.size > 1
-          $stderr.puts "Found more than one application matching #{name}"
-          posible_apps.each do |app|
-            puts " #{app.name} (#{app.slug_name}) "
-          end
-        elsif posible_apps.size == 0
-          $stderr.puts "App with name #{name} not found"
-          available_apps = all_apps.map {|app|
-            "#{app.name} (#{app.slug_name})"
-          }
-          $stderr.puts "Available apps: #{available_apps.join(" ")}"
+    desc 'apps [APPNAME]', "List the apps\n\nIf APPNAME is defined, show extended information about the app"
+    def apps(app_name = nil)
+      with_scalarium do |scalarium|
+        if app_name
+          app = scalarium.find_app(app_name) or raise ApplicationNotFound
+          cool_inspect(app)
         else
-          app = posible_apps.first
-
-          deploy_info = app.deploy!
-
-          puts "Waiting the deploy finish"
-          puts "Check https://manage.scalarium.com/applications/#{app.id}/deployments/#{deploy_info["id"]} if you want"
-          while deploy_info["successful"] == nil
-            sleep 1
-            deploy_info = app.deploy_info(deploy_info["id"])
-          end
-          puts "Deploy was #{deploy_info["successful"]}"
-          exit (deploy_info["successful"] ? 0 : -1)
-        end
-      end
-
-    end
-
-    desc 'apps', "List the apps"
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
-    def apps
-      capture_exceptions do
-        scalarium = ::Scalarium.new( get_token, false )
-
-        scalarium.apps.each do |app|
-          say app.name, Color::BLUE
-          cool_inspect(app, 2)
+          scalarium.apps.each { |app| say app.name, Color::BLUE }
         end
       end
     end
 
 
-
-    desc 'inspect', "Show Clouds, Roles and Instance names"
-    method_option :cloud, :aliases => "-c", :desc => "only for clouds matchin this regexp"
+    desc 'clouds [CLOUDNAME]', "Show Clouds, Roles and Instance names"
     method_option :verbose, :aliases => "-v", :desc => "Show all the availabe", :type => :boolean
-    def inspect
-      capture_exceptions do
-        load_all = options[:cloud]
-        load_all = false if options[:verbose]
-        scalarium = ::Scalarium.new( get_token, load_all )
+    def clouds(cloud_name = "all")
+      with_scalarium(cloud_name) do |scalarium,clouds|
 
-        scalarium.clouds.each do |cloud|
-          print_cloud(cloud, options[:verbose])
-        end
+        clouds.threaded_each{ |c|
+          if cloud_name != 'all'
+            DQ[ lambda{ c.instances }, lambda{c.roles} ]
+            print_cloud(c, options[:verbose])
+          else
+            puts c.name
+          end
+        }
+
       end
     end
-
-    desc 'clouds', "List the clouds"
-    def clouds
-      capture_exceptions do
-        scalarium = ::Scalarium.new( get_token, false )
-        scalarium.clouds.each do |cloud|
-          puts cloud.name
-        end
-      end
-    end
-
 
     protected
 
-    def run_remote_command(host, command)
+    def run_remote_command(instance, command)
+      host = instance.nickname
       puts "Oppening connection to host #{host}" if $DEBUG
       Net::SSH.start(host, ENV["USER"]) do |ssh|
         puts "Executing #{command}" if $DEBUG
@@ -220,30 +208,15 @@ class Scalarium
         $stderr.puts "#{Color::RED}Could not execute a command in #{host} because auth problems"
         $stderr.puts "Check that you can access #{host} through 'ssh #{host}' as your username (ENV['USER'])#{Color::CLEAR}"
       end
+    rescue Net::SSH::HostKeyMismatch
+      Thread.exclusive do
+        $stderr.puts "#{Color::RED}Could not execute a command in #{host} because HostKeyMismatch"
+        $stderr.puts "Remove the entry in ~/.ssh/know_hosts for #{instance.ip} #{Color::CLEAR}"
+      end
     rescue SocketError
       Thread.exclusive do
         $stderr.puts "#{Color::RED}Cold not connect to #{host} due connection problems#{Color::CLEAR}"
       end
-    end
-
-    def get_instances_ids(cloud, instances)
-      get_instances(cloud, instances).map{|i| i.id }
-    end
-
-    def get_instances(cloud, instances)
-      return cloud.instances if instances.nil? || instances.empty?
-      posible_instances = cloud.instances.select{|instance|
-        instances.include?(instance.nickname.downcase)
-      }
-      if posible_instances.size != instances.size
-        if posible_instances.size == 0
-          $stderr.puts "Not to be able to found any instance with name/names #{instances}"
-        else
-          $stderr.puts "Only be able to found #{posible_instances.map{|i| i.nickname}.join(" ")} instances"
-        end
-        exit -3
-      end
-      posible_instances
     end
 
     def format_ssh_config_host(instance)
@@ -253,8 +226,12 @@ class Scalarium
       host
     end
 
-    def capture_exceptions
-      yield
+    def with_scalarium(cloud_name = nil)
+      scalarium = ::Scalarium.new( get_token )
+      cloud = scalarium.find_clouds(cloud_name) or raise CloudNotFound.new(cloud_name) if cloud_name
+
+      yield scalarium, cloud
+
     rescue ::RestClient::Unauthorized
       say("The token is not valid", Color::RED)
       File.unlink token_path
@@ -265,6 +242,13 @@ class Scalarium
     rescue ::Errno::ETIMEDOUT
       say("There were problems with connection (timeout)")
       exit -3
+    rescue CloudNotFound => e
+      say("Can't find a cloud named #{e.message}")
+      exit -4
+    rescue RolOrInstanceNotFound => e
+      say("Can't find a rol or instances with name #{e.message}")
+    rescue AppNotFound => e
+      say("Can't find a app with name #{e.message}")
     end
 
     def get_token
@@ -304,7 +288,12 @@ class Scalarium
         what.each do |key,value|
           case value
           when String, Integer, false, true, nil
-            say( " " * indent+ key.to_s + ": " + Color::BLACK + value.inspect, Color::YELLOW)
+            if value.is_a?(String)
+              value = value.size > 50 ? value[0..50].inspect+"..." : value.inspect
+            else
+              value = value.inspect
+            end
+            say( " " * indent+ key.to_s + ": " + Color::BLACK + value, Color::YELLOW)
           else
             if (what === Array || what === Hash) && what.size == 0
               say( " " * indent + key.to_s + ": " + Color::MAGENTA + what.inspect, Color::YELLOW)
@@ -317,10 +306,16 @@ class Scalarium
       when Array
         say( " " * indent + '[', Color::MAGENTA)
         what.each_with_index do |value, index|
-          say( " " * indent + index.to_s + ".")
+          print " " * indent + index.to_s + "."
           cool_inspect(value, indent + 2)
         end
         say( " " * indent + ']', Color::MAGENTA)
+      when String
+        if what.size > 30
+          say((" " * indent + wath[0..30].inspect + "..."), Color::Black)
+        else
+          say((" " * indent + what.inspect ), Color::BLACK)
+        end
       else
         say((" " * indent + what.inspect ), Color::BLACK)
       end

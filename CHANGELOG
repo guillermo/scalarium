@@ -1,3 +1,8 @@
+Version 0.4.0
+   * Big refactor of scalarium class
+   * Big refactor of cli
+   * Add run_remote command to launch command through tmux
+
 Version 0.3.0
    * execute - Added execute command
 
