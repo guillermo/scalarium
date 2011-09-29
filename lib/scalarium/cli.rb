@@ -247,8 +247,10 @@ class Scalarium
       exit -4
     rescue RolOrInstanceNotFound => e
       say("Can't find a rol or instances with name #{e.message}")
+      exit -4
     rescue AppNotFound => e
       say("Can't find a app with name #{e.message}")
+      exit -4
     end
 
     def get_token
