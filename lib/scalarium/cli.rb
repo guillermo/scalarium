@@ -159,7 +159,7 @@ class Scalarium
     def apps(app_name = nil)
       with_scalarium do |scalarium|
         if app_name
-          app = scalarium.find_app(app_name) or raise ApplicationNotFound
+          app = scalarium.find_app(app_name) or raise AppNotFound.new(app_name)
           cool_inspect(app)
         else
           scalarium.apps.each { |app| say app.name, Color::BLUE }
@@ -247,8 +247,10 @@ class Scalarium
       exit -4
     rescue RolOrInstanceNotFound => e
       say("Can't find a rol or instances with name #{e.message}")
+      exit -4
     rescue AppNotFound => e
       say("Can't find a app with name #{e.message}")
+      exit -4
     end
 
     def get_token
