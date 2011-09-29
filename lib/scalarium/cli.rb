@@ -159,7 +159,7 @@ class Scalarium
     def apps(app_name = nil)
       with_scalarium do |scalarium|
         if app_name
-          app = scalarium.find_app(app_name) or raise ApplicationNotFound
+          app = scalarium.find_app(app_name) or raise AppNotFound.new(app_name)
           cool_inspect(app)
         else
           scalarium.apps.each { |app| say app.name, Color::BLUE }
