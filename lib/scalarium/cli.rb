@@ -176,7 +176,9 @@ class Scalarium
         clouds.threaded_each{ |c|
           if cloud_name != 'all'
             DQ[ lambda{ c.instances }, lambda{c.roles} ]
-            print_cloud(c, options[:verbose])
+            Thread.exclusive do
+              print_cloud(c, options[:verbose])
+            end
           else
             puts c.name
           end
