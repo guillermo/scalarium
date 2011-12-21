@@ -81,8 +81,10 @@ class Scalarium
         while(instance = instances.shift) do
           system(%{tmux split-window -h -p #{100/total_instances*(instances.size+1)} -t #{session_name} "ssh -t #{instance.nickname} \\"#{command}\\""})
         end
-        system("tmux select-window -t #{session_name}")
-        exec("tmux -2 attach-session -t #{session_name}")
+        system("tmux select-window -t #{session_name} ")
+        system("tmux select-layout -t #{session_name} tiled")
+        exec("tmux -2 attach-session -t #{session_name} ")
+
       end
     end
 
