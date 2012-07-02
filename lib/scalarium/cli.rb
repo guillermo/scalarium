@@ -100,12 +100,12 @@ class Scalarium
 
           puts "Waiting the deploy finish"
           puts "Check https://manage.scalarium.com/clouds/#{cloud.id}/deployments/#{deploy_info["id"]} if you want"
-          while deploy_info["successful"] == nil
+          while deploy_info["status"] == 'running'
             sleep 1
             deploy_info = cloud.check_deploy(deploy_info["id"])
           end
-          puts "Deploy was #{deploy_info["successful"]}"
-          exit (deploy_info["successful"] ? 0 : -1)
+          puts "Deploy was #{deploy_info["status"]}"
+          exit (deploy_info["status"] == 'successful' ? 0 : -1)
         end
       end
     end
@@ -129,12 +129,12 @@ class Scalarium
 
           puts "Waiting the recipe to finish"
           puts "Check https://manage.scalarium.com/clouds/#{cloud.id}/deployments/#{deploy_info["id"]} if you want"
-          while deploy_info["successful"] == nil
+          while deploy_info["status"] == 'running'
             sleep 1
             deploy_info = cloud.check_deploy(deploy_info["id"])
           end
-          puts "Deploy was #{deploy_info["successful"]}"
-          exit (deploy_info["successful"] ? 0 : -1)
+          puts "Deploy was #{deploy_info["status"]}"
+          exit (deploy_info["status"] == 'successful' ? 0 : -1)
         end
       end
     end
@@ -148,12 +148,12 @@ class Scalarium
 
         puts "Waiting the deploy finish"
         puts "Check https://manage.scalarium.com/applications/#{app.id}/deployments/#{deploy_info["id"]} if you want"
-        while deploy_info["successful"] == nil
+        while deploy_info["status"] == 'running'
           sleep 1
           deploy_info = app.deploy_info(deploy_info["id"])
         end
-        puts "Deploy was #{deploy_info["successful"]}"
-        exit (deploy_info["successful"] ? 0 : -1)
+        puts "Deploy was #{deploy_info["status"]}"
+        exit (deploy_info["status"] == 'successful' ? 0 : -1)
       end
     end
 

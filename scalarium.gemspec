@@ -21,6 +21,7 @@ Gem::Specification.new do |s|
   s.add_runtime_dependency 'rest-client'
 	s.add_runtime_dependency 'dispatch_queue', ">=1.1.0"
   s.add_runtime_dependency 'thor'
+  s.add_runtime_dependency 'net-ssh'
   s.add_development_dependency 'ruby-debug19'
   s.add_development_dependency 'rake'
 end
