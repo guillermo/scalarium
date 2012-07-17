@@ -1,13 +1,29 @@
+Version 0.4.3
+
+	* Ensure only the current user can read the .scalarium_token. (Till
+	 Klampaeckel)
+
+	 * Remove "warning: don't put space before argument parentheses" (Till
+	 Klampaeckel)
+
+
 Version 0.4.0
-   * Big refactor of scalarium class
-   * Big refactor of cli
-   * Add run_remote command to launch command through tmux
+
+	* Big refactor of scalarium class
+
+	* Big refactor of cli
+
+	* Add run_remote command to launch command through tmux
+
 
 Version 0.3.0
-   * execute - Added execute command
+
+	* execute - Added execute command
+
 
 Version 0.2.0
-   * run_recipe       - Allow to run recipes in some instances
-   * udpate_cookbooks - Allow to update cookbooks in machines
-   * deploy           - Allow to Deploy apps
-   * apps             - List applications
+
+	* run_recipe       - Allow to run recipes in some instances
+	* udpate_cookbooks - Allow to update cookbooks in machines
+	* deploy           - Allow to Deploy apps
+	* apps             - List applications
