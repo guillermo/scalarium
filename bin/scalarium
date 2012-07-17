@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
 
+if File.exists?(File.dirname(File.dirname(__FILE__)) + "/scalarium.gemspec")
+  $:.unshift(File.dirname(File.dirname(__FILE__)) + "/lib")
+end
+
 require 'scalarium'
 require 'scalarium/cli'
 

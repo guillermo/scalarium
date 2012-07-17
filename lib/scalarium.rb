@@ -1,3 +1,4 @@
+require 'rubygems'
 require 'rest-client'
 require 'json'
 require 'dispatch_queue'
