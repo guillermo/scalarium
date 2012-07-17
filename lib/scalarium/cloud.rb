@@ -2,23 +2,23 @@
 class Scalarium
   class Cloud < Resource
     def update_cookbooks!
-      post("clouds/#{id}/deploy", :command => 'update_custom_cookbooks' )
+      post("clouds/#{object_id}/deploy", :command => 'update_custom_cookbooks' )
     end
 
     def check_deploy(deploy_id)
-      get("clouds/#{id}/deployments/#{deploy_id}")
+      get("clouds/#{object_id}/deployments/#{deploy_id}")
     end
 
     def run_recipe!(recipe, instances = nil)
       opt = {:command => "execute_recipes", :recipes => recipe}
       opt[:instances] = instances if instances
 
-      post("clouds/#{id}/deploy", opt)
+      post("clouds/#{object_id}/deploy", opt)
     end
 
     def instances
       return @instances if @instances
-      @instances = get("clouds/#{id}/instances").map{|hash|
+      @instances = get("clouds/#{object_id}/instances").map{|hash|
         Instance.new(@token, self, hash)
       }
     end
@@ -38,7 +38,7 @@ class Scalarium
 
     def roles
       return @roles if @roles
-      @roles = get("clouds/#{id}/roles").map{|hash|
+      @roles = get("clouds/#{object_id}/roles").map{|hash|
         Rol.new(@token, self, hash)
       }
     end
