@@ -200,9 +200,9 @@ class Scalarium
           Thread.exclusive do
             case stream
             when :stdout
-              $stdout.puts ("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
+              $stdout.puts("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
             when :stderr
-              $stderr.puts ("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
+              $stderr.puts("#{Color::GREEN}%10s: #{Color::CLEAR}%s" %[ host, data])
             end
           end
         end
