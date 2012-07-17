@@ -262,7 +262,7 @@ class Scalarium
         token = File.read(token_path).strip
       else
         token = ask("I need your token:").strip
-        File.open(token_path, 'w'){|f| f.write token }
+        File.open(token_path, 'w', 0600){|f| f.write token }
       end
       token
     end
