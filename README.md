@@ -1,10 +1,10 @@
-= Scalarium =
+# Scalarium
 
 Scalarium rubygem is a tool for interacting with scalarium and with the ec2 instances.
 
-== Commands ==
+## Commands
 
-    scalarium inspect CLOUDNAME 
+    scalarium inspect CLOUDNAME
 
 See the roles with the instances and their ips.
 
@@ -28,7 +28,7 @@ Updates the cookbooks in the **CLOUDNAME**. If **ROL_OR_INSTANCE** is present, o
 
     scalarium run_recipe CLOUDNAME [ROL_OR_INSTANCE] RECIPE
 
-Run the **RECIPE** in the **CLOUDNAME**. 
+Run the **RECIPE** in the **CLOUDNAME**.
 
 
     scalarium deploy APPNAME
