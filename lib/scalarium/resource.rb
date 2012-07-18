@@ -5,5 +5,9 @@ class Scalarium
       @token = token
       super(attributes)
     end
+
+    def id
+      @table[:id]
+    end
   end
 end
